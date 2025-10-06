@@ -80,15 +80,10 @@ def run_swiglu(
     Returns:
         Float[Tensor, "... d_model"]: Output embeddings of the same shape as the input embeddings.
     """
-    # Example:
-    # If your state dict keys match, you can use `load_state_dict()`
-    # swiglu.load_state_dict(weights)
-    # You can also manually assign the weights
-    # swiglu.w1.weight.data = w1_weight
-    # swiglu.w2.weight.data = w2_weight
-    # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
-
+    from cs336_basics.lm.ff import positionwise_feedforward
+    swiglu = positionwise_feedforward(d_model, d_ff)
+    swiglu.load_state_dict({"W1": w1_weight, "W2": w2_weight, "W3": w3_weight})
+    return swiglu(in_features)
 
 def run_scaled_dot_product_attention(
     Q: Float[Tensor, " ... queries d_k"],
