@@ -31,7 +31,7 @@ def run_linear(
     from cs336_basics.lm.linear import Linear
     linear = Linear(in_features=d_in, out_features=d_out)
     linear.load_state_dict({'W': weights})
-    return linear.forward(in_features)
+    return linear(in_features)
 
 
 def run_embedding(
@@ -55,7 +55,7 @@ def run_embedding(
     from cs336_basics.lm.embedding import Embedding
     embedding = Embedding(vocab_size, d_model)
     embedding.load_state_dict({'W': weights})
-    return embedding.forward(token_ids)
+    return embedding(token_ids)
 
 
 def run_swiglu(
@@ -382,7 +382,10 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+    from cs336_basics.lm.rmsnorm import RMSNorm
+    norm = RMSNorm(d_model, eps)
+    norm.load_state_dict({"G": weights})
+    return norm(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
