@@ -3,9 +3,145 @@ import regex as re
 from collections import defaultdict
 import multiprocessing
 import mmap
-from typing import List, Tuple, Dict, DefaultDict
+import heapq
+from array import array
+from typing import List, Tuple, Dict, DefaultDict, Set
 
 GPT2_PAT = re.compile(r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""", re.UNICODE)
+
+# --- INTERNAL DATA STRUCTURES (OpenWebText-scale) ---
+class WordStore:
+    """Stores unique words as token id arrays and their frequencies.
+
+    Also tracks per-word mapping from pair -> positions for fast local updates.
+    """
+
+    def __init__(self) -> None:
+        self._tokens: Dict[int, array] = {}
+        self._freq: Dict[int, int] = {}
+        self._pair_positions: Dict[int, Dict[Tuple[int, int], List[int]]] = {}
+        self._next_id: int = 0
+
+    def add_word(self, word_tokens: Tuple[int, ...], freq: int) -> int:
+        wid = self._next_id
+        self._next_id += 1
+        # Use 32-bit arrays for simplicity and headroom
+        token_arr = array('I', word_tokens)
+        self._tokens[wid] = token_arr
+        self._freq[wid] = freq
+        self._pair_positions[wid] = self._compute_pair_positions(token_arr)
+        return wid
+
+    def items(self):
+        for wid in self._tokens.keys():
+            yield wid, self._tokens[wid], self._freq[wid]
+
+    def get_tokens(self, wid: int) -> array:
+        return self._tokens[wid]
+
+    def get_freq(self, wid: int) -> int:
+        return self._freq[wid]
+
+    def get_pair_positions(self, wid: int) -> Dict[Tuple[int, int], List[int]]:
+        return self._pair_positions[wid]
+
+    def update_tokens_and_pairs(self, wid: int, new_tokens: array) -> None:
+        self._tokens[wid] = new_tokens
+        self._pair_positions[wid] = self._compute_pair_positions(new_tokens)
+
+    @staticmethod
+    def _compute_pair_positions(tokens: array) -> Dict[Tuple[int, int], List[int]]:
+        positions: Dict[Tuple[int, int], List[int]] = defaultdict(list)
+        if len(tokens) < 2:
+            return positions
+        # enumerate adjacent pairs and record their starting positions
+        prev = tokens[0]
+        for i in range(1, len(tokens)):
+            cur = tokens[i]
+            positions[(prev, cur)].append(i - 1)
+            prev = cur
+        return positions
+
+
+class PairIndex:
+    """Tracks global pair counts and word membership; provides a lazy max-heap.
+
+    - pair_counts[(a,b)] -> total count across corpus (weighted by word freq)
+    - pair_to_word_ids[(a,b)] -> set of word ids that contain the pair
+    - heap entries: (-count, tie_key, (a,b)), with lazy invalidation on pop
+    """
+
+    def __init__(self) -> None:
+        self.pair_counts: DefaultDict[Tuple[int, int], int] = defaultdict(int)
+        self.pair_to_word_ids: Dict[Tuple[int, int], Set[int]] = defaultdict(set)
+        self._heap: List[Tuple[int, Tuple[bytes, bytes], Tuple[int, int]]] = []
+
+    def add_word_pairs(self, wid: int, pair_positions: Dict[Tuple[int, int], List[int]], weight: int) -> None:
+        for pair, positions in pair_positions.items():
+            if not positions:
+                continue
+            self.pair_counts[pair] += weight * len(positions)
+            self.pair_to_word_ids[pair].add(wid)
+
+    def remove_word_pairs(self, wid: int, pair_positions: Dict[Tuple[int, int], List[int]], weight: int) -> None:
+        for pair, positions in pair_positions.items():
+            if not positions:
+                continue
+            self.pair_counts[pair] -= weight * len(positions)
+            # pair may still exist in this word after update; set maintenance happens in reconcile_word_membership
+
+    def reconcile_word_membership(self, wid: int, before: Dict[Tuple[int, int], List[int]], after: Dict[Tuple[int, int], List[int]]) -> Set[Tuple[int, int]]:
+        """Update pair_to_word_ids sets based on before/after presence.
+
+        Returns the set of pairs whose global count potentially changed (union of keys).
+        """
+        changed_pairs: Set[Tuple[int, int]] = set(before.keys()) | set(after.keys())
+        for pair in changed_pairs:
+            had = bool(before.get(pair))
+            has = bool(after.get(pair))
+            if had and not has:
+                ws = self.pair_to_word_ids.get(pair)
+                if ws is not None and wid in ws:
+                    ws.discard(wid)
+                    if not ws:
+                        # cleanup to keep structure small
+                        self.pair_to_word_ids.pop(pair, None)
+            elif has:
+                self.pair_to_word_ids[pair].add(wid)
+        return changed_pairs
+
+    def push_heap(self, pair: Tuple[int, int], vocab: Dict[int, bytes]) -> None:
+        count = self.pair_counts.get(pair, 0)
+        if count <= 0:
+            return
+        a, b = pair
+        a_bytes = vocab[a]
+        b_bytes = vocab[b]
+        # For lexicographically greatest pair first in a min-heap:
+        # Negate each byte value and append a sentinel (1) to handle prefix cases
+        # This ensures longer sequences with more negative values come first
+        tie_key = (
+            tuple(-x for x in a_bytes) + (1,),
+            tuple(-x for x in b_bytes) + (1,)
+        )
+        heapq.heappush(self._heap, (-count, tie_key, pair))
+
+    def build_heap(self, vocab: Dict[int, bytes]) -> None:
+        self._heap.clear()
+        for pair, count in self.pair_counts.items():
+            if count > 0:
+                self.push_heap(pair, vocab)
+
+    def pop_best_pair(self) -> Tuple[int, int, int]:
+        """Pop the pair with highest count; returns (a, b, count). May return (0,0,0) if empty."""
+        while self._heap:
+            neg_count, _tie, pair = heapq.heappop(self._heap)
+            count = -neg_count
+            actual = self.pair_counts.get(pair, 0)
+            if actual == count and count > 0:
+                return pair[0], pair[1], count
+            # else stale; continue
+        return 0, 0, 0
 
 # --- PRETOKENIZATION HELPERS ---
 def get_chunk_boundaries(filename: str, num_chunks: int, special_token: str = None) -> List[Tuple[int, int]]:
@@ -183,52 +319,77 @@ List[Tuple[bytes, bytes]]]:
     if verbose:
         print("Starting parallel pre-tokenization...")
     with multiprocessing.Pool(num_workers) as pool:
-        results = pool.map(process_chunk_mmap, pool_args)
-    
-    if verbose:
-        print("Aggregating results from workers...")
-    for res_dict in results:
-        for word, freq in res_dict.items():
-            word_freqs[word] += freq
+        for res_dict in pool.imap_unordered(process_chunk_mmap, pool_args, chunksize=1):
+            for word, freq in res_dict.items():
+                word_freqs[word] += freq
 
     if verbose:
         print(f"Pre-tokenization complete. Found {len(word_freqs)} unique words.")
 
-    # 2. Optimized BPE algorithm
-    merges = []
-    vocab = {i: bytes([i]) for i in range(256)}
+    # 2. Build WordStore and PairIndex, then perform exact merges with heap
+    merges: List[Tuple[bytes, bytes]] = []
+    vocab: Dict[int, bytes] = {i: bytes([i]) for i in range(256)}
     for i, token_str in enumerate(special_tokens):
         vocab[256 + i] = token_str.encode('utf-8')
-    
-    if verbose:
-        print("Calculating initial pair statistics...")
-    pair_stats = get_initial_pair_stats(word_freqs)
+
+    # initialize WordStore
+    ws = WordStore()
+    for word_tokens, freq in word_freqs.items():
+        ws.add_word(word_tokens, freq)
+
+    # initialize PairIndex with counts and membership
+    pi = PairIndex()
+    for wid, _tokens, freq in ws.items():
+        pi.add_word_pairs(wid, ws.get_pair_positions(wid), freq)
+
+    # build initial heap
+    pi.build_heap(vocab)
+
+    def _merge_tokens(tokens: array, p1: int, p2: int, new_id: int) -> array:
+        if len(tokens) < 2:
+            return array('I', tokens)
+        out = array('I')
+        i = 0
+        while i < len(tokens):
+            if i + 1 < len(tokens) and tokens[i] == p1 and tokens[i + 1] == p2:
+                out.append(new_id)
+                i += 2
+            else:
+                out.append(tokens[i])
+                i += 1
+        return out
 
     num_merges_needed = vocab_size - len(vocab)
     if verbose:
         print(f"Starting BPE merge process for {num_merges_needed} merges...")
     for i in range(num_merges_needed):
-        if not pair_stats:
+        a, b, count = pi.pop_best_pair()
+        if count == 0:
             if verbose:
                 print(f"Stopping early after {i} merges: no more pairs to merge.")
             break
 
-        # find best pair from stats
-        max_count = max(pair_stats.values())
-        candidates = [p for p, c in pair_stats.items() if c == max_count]
-        best_pair = max(candidates, key=lambda p: (vocab[p[0]], vocab[p[1]]))
-        # print(f"Merge {i+1}, count={max_count}: {[(vocab[c[0]], vocab[c[1]]) for c in candidates]}")
-        # if verbose:
-            # print(f"Merge {i+1}, count={max_count}: {candidates}")
-
         new_token_id = 256 + len(special_tokens) + i
-
-        byte1 = vocab[best_pair[0]]
-        byte2 = vocab[best_pair[1]]
+        byte1 = vocab[a]
+        byte2 = vocab[b]
         merges.append((byte1, byte2))
         vocab[new_token_id] = byte1 + byte2
 
-        word_freqs = merge_pair_and_update_stats(word_freqs, best_pair, new_token_id, pair_stats)
+        affected = list(pi.pair_to_word_ids.get((a, b), set()))
+        for wid in affected:
+            freq = ws.get_freq(wid)
+            before_positions = ws.get_pair_positions(wid)
+            pi.remove_word_pairs(wid, before_positions, freq)
+
+            tokens_arr = ws.get_tokens(wid)
+            new_tokens = _merge_tokens(tokens_arr, a, b, new_token_id)
+            ws.update_tokens_and_pairs(wid, new_tokens)
+
+            after_positions = ws.get_pair_positions(wid)
+            pi.add_word_pairs(wid, after_positions, freq)
+            changed_pairs = pi.reconcile_word_membership(wid, before_positions, after_positions)
+            for pair in changed_pairs:
+                pi.push_heap(pair, vocab)
 
         if verbose and (i + 1) % 100 == 0:
             print(f"Merge {i+1}/{num_merges_needed} complete.")
