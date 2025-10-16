@@ -2,13 +2,18 @@ import argparse
 import base64
 import json
 import time
+import os
 from typing import Dict, List, Tuple
 from cs336_basics.tokenizer.train_bpe import train_bpe
 
-def save_tokenizer(output_prefix: str, vocab: Dict[int, bytes], merges: List[Tuple[bytes, bytes]]):
+def save_tokenizer(output_prefix: str, output_path: str, vocab: Dict[int, bytes], merges: List[Tuple[bytes, bytes]]):
     """Saves the trained tokenizer vocabulary and merges to disk."""
-    vocab_file = f"{output_prefix}.vocab.json"
-    merges_file = f"{output_prefix}.merges.bpe"
+    # Ensure output_path is a valid directory
+    if not os.path.isdir(output_path):
+        os.makedirs(output_path, exist_ok=True)
+
+    vocab_file = os.path.join(output_path, f"{output_prefix}.vocab.json")
+    merges_file = os.path.join(output_path, f"{output_prefix}.merges.bpe")
 
     # 1. Save the vocabulary file
     # We use Base64 to safely encode the bytes for JSON serialization
@@ -52,6 +57,12 @@ def main():
         required=True,
         help="Prefix for the output files (e.g. tinystories_tokenizer)."
     )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        required=True,
+        help="Folder for output files (e.g. results/TinyStories)."
+    )
     args = parser.parse_args()
 
     special_tokens = ["<|endoftext|>"]
@@ -60,13 +71,14 @@ def main():
     vocab, merges = train_bpe(
         input_path=args.input_path,
         vocab_size=args.vocab_size,
-        special_tokens=special_tokens
+        special_tokens=special_tokens,
+        verbose=True
     )
 
     end_time = time.time()
     print(f"Training completed in {(end_time - start_time):.2f} seconds.")
 
-    save_tokenizer(args.output_prefix, vocab, merges)
+    save_tokenizer(args.output_prefix, args.output_path, vocab, merges)
 
 if __name__ == "__main__":
     main()

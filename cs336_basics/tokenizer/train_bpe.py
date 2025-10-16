@@ -95,6 +95,7 @@ def merge_pair_and_update_stats(
 ) -> Dict[Tuple[int, ...], int]:
     """
     Merges a pair and incrementally updates the pair_stats dictionary.
+    Only updates pair statistics for pairs affected by the merge.
     """
     new_word_freqs = defaultdict(int)
     p1, p2 = pair_to_merge
@@ -104,23 +105,52 @@ def merge_pair_and_update_stats(
         if len(word) < 2:
             new_word_freqs[word] += freq
             continue
-        # multiple tokens: remove from pair_stats, recombine word ot word_freqs, pair_stats
+        
+        # Find all positions where the merge occurs and build new word
         new_word = []
-        merged = False
+        merge_positions = []  # Track positions in new_word where merges happened
         i = 0
+        j = 0
         while i < len(word):
             if i + 1 < len(word) and (word[i], word[i+1]) == (p1, p2):
-                merged = True
+                merge_positions.append(j)
                 new_word.append(new_id)
                 i += 2
             else:
                 new_word.append(word[i])
                 i += 1
-        if merged:
-            for i in range(len(word) - 1):
-                pair_stats[word[i], word[i+1]] -= freq
-            for i in range(len(new_word) - 1):
-                pair_stats[new_word[i], new_word[i+1]] += freq
+            j += 1
+
+        if merge_positions:
+            # Only update pair stats around merge positions
+            # Track which pairs we've already modified to avoid double-counting
+            # when consecutive merges affect the same pairs
+            old_word_pos = 0
+            new_word_pos = 0
+
+            for i, merge_idx in enumerate(merge_positions):
+                # Advance to the merge position in new_word
+                while new_word_pos < merge_idx:
+                    old_word_pos += 1
+                    new_word_pos += 1
+
+                is_next_consecutive = (i + 1 < len(merge_positions) and 
+                                      merge_positions[i + 1] == merge_idx + 1)
+                if old_word_pos > 0:
+                    pair_stats[(word[old_word_pos - 1], word[old_word_pos])] -= freq
+                if old_word_pos + 2 < len(word):
+                    if not is_next_consecutive:
+                        pair_stats[(word[old_word_pos + 1], word[old_word_pos + 2])] -= freq
+                pair_stats[(word[old_word_pos], word[old_word_pos + 1])] -= freq
+                
+                if new_word_pos > 0:
+                    pair_stats[(new_word[new_word_pos - 1], new_word[new_word_pos])] += freq
+                if new_word_pos + 1 < len(new_word):
+                    if not is_next_consecutive:
+                        pair_stats[(new_word[new_word_pos], new_word[new_word_pos + 1])] += freq
+                old_word_pos += 2
+                new_word_pos += 1
+
             new_word_freqs[tuple(new_word)] = freq
         else:
             new_word_freqs[tuple(word)] = freq
