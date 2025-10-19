@@ -6,6 +6,18 @@ import os
 from typing import Dict, List, Tuple
 from cs336_basics.tokenizer.train_bpe import train_bpe
 
+def gpt2_bytes_to_unicode() -> Dict[int, str]:
+    """Returns a mapping from bytes to unicode string for printable display."""
+    bs = list(range(ord("!"), ord("~") + 1)) + list(range(ord("¡"), ord("¬") + 1)) + list(range(ord("®"), ord("ÿ") + 1))
+    cs = bs[:]
+    n = 0
+    for b in range(2**8):
+        if b not in bs:
+            bs.append(b)
+            cs.append(2**8 + n)
+            n += 1
+    return dict(zip(bs, [chr(n) for n in cs]))
+
 def save_tokenizer(output_prefix: str, output_path: str, vocab: Dict[int, bytes], merges: List[Tuple[bytes, bytes]]):
     """Saves the trained tokenizer vocabulary and merges to disk."""
     # Ensure output_path is a valid directory
@@ -15,24 +27,28 @@ def save_tokenizer(output_prefix: str, output_path: str, vocab: Dict[int, bytes]
     vocab_file = os.path.join(output_path, f"{output_prefix}.vocab.json")
     merges_file = os.path.join(output_path, f"{output_prefix}.merges.bpe")
 
-    # 1. Save the vocabulary file
-    # We use Base64 to safely encode the bytes for JSON serialization
-    encoded_vocab = {
-        idx: base64.b64encode(token_bytes).decode('utf-8') 
-        for idx, token_bytes in vocab.items()
-    }
+    # GPT-2 style byte-to-unicode mapping for readable display
+    byte_encoder = gpt2_bytes_to_unicode()
+    
+    # 1. Save the vocabulary file in GPT-2 format
+    # Format: {token_string: id} where bytes are converted using GPT-2 mapping
+    str_to_id_vocab = {}
+    for idx, token_bytes in vocab.items():
+        # Convert bytes to GPT-2's unicode representation
+        token_str = ''.join(byte_encoder[b] for b in token_bytes)
+        str_to_id_vocab[token_str] = idx
+    
     with open(vocab_file, 'w', encoding='utf-8') as f:
-        json.dump(encoded_vocab, f, indent=2, ensure_ascii=False)
+        json.dump(str_to_id_vocab, f, indent=4, ensure_ascii=False)
     print(f"Vocabulary saved to: {vocab_file}")
 
-    # 2. Save the merges file
-    # This format is compatible with many existing BPE implementations
+    # 2. Save the merges file in GPT-2 format
     with open(merges_file, 'w', encoding='utf-8') as f:
         for p1, p2 in merges:
-            # Writing the raw bytes directly might cause encoding issues,
-            # so we represent them in a readable way. Here, we use utf-8 representation.
-            # A more robust way might use base64 again, but this is standard.
-            f.write(f"{p1.decode('utf-8', 'ignore')} {p2.decode('utf-8', 'ignore')}\n")
+            # Convert bytes to GPT-2 unicode representation
+            t1 = ''.join(byte_encoder[b] for b in p1)
+            t2 = ''.join(byte_encoder[b] for b in p2)
+            f.write(f"{t1} {t2}\n")
     print(f"Merges saved to: {merges_file}")
 
 def main():

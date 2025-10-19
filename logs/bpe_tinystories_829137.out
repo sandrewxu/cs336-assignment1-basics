@@ -1,0 +1,125 @@
+Job ID: 829137
+Running on host: r817u09n04.misha.ycrc.yale.edu
+Started at: Thu Oct 16 18:11:54 EDT 2025
+CPUs allocated: 12
+Memory allocated: 32768 MB
+========================================
+Starting BPE training...
+Input: data/TinyStoriesV2-GPT4-train.txt
+Vocab size: 10000
+Output: results/TinyStoriesHPC/tinystories_bpe
+========================================
+Reading file 'data/TinyStoriesV2-GPT4-train.txt'...
+Chunking file for parallel processing with 64 workers...
+Starting parallel pre-tokenization...
+Pre-tokenization complete. Found 59933 unique words.
+Starting BPE merge process for 9743 merges...
+Merge 100/9743 complete.
+Merge 200/9743 complete.
+Merge 300/9743 complete.
+Merge 400/9743 complete.
+Merge 500/9743 complete.
+Merge 600/9743 complete.
+Merge 700/9743 complete.
+Merge 800/9743 complete.
+Merge 900/9743 complete.
+Merge 1000/9743 complete.
+Merge 1100/9743 complete.
+Merge 1200/9743 complete.
+Merge 1300/9743 complete.
+Merge 1400/9743 complete.
+Merge 1500/9743 complete.
+Merge 1600/9743 complete.
+Merge 1700/9743 complete.
+Merge 1800/9743 complete.
+Merge 1900/9743 complete.
+Merge 2000/9743 complete.
+Merge 2100/9743 complete.
+Merge 2200/9743 complete.
+Merge 2300/9743 complete.
+Merge 2400/9743 complete.
+Merge 2500/9743 complete.
+Merge 2600/9743 complete.
+Merge 2700/9743 complete.
+Merge 2800/9743 complete.
+Merge 2900/9743 complete.
+Merge 3000/9743 complete.
+Merge 3100/9743 complete.
+Merge 3200/9743 complete.
+Merge 3300/9743 complete.
+Merge 3400/9743 complete.
+Merge 3500/9743 complete.
+Merge 3600/9743 complete.
+Merge 3700/9743 complete.
+Merge 3800/9743 complete.
+Merge 3900/9743 complete.
+Merge 4000/9743 complete.
+Merge 4100/9743 complete.
+Merge 4200/9743 complete.
+Merge 4300/9743 complete.
+Merge 4400/9743 complete.
+Merge 4500/9743 complete.
+Merge 4600/9743 complete.
+Merge 4700/9743 complete.
+Merge 4800/9743 complete.
+Merge 4900/9743 complete.
+Merge 5000/9743 complete.
+Merge 5100/9743 complete.
+Merge 5200/9743 complete.
+Merge 5300/9743 complete.
+Merge 5400/9743 complete.
+Merge 5500/9743 complete.
+Merge 5600/9743 complete.
+Merge 5700/9743 complete.
+Merge 5800/9743 complete.
+Merge 5900/9743 complete.
+Merge 6000/9743 complete.
+Merge 6100/9743 complete.
+Merge 6200/9743 complete.
+Merge 6300/9743 complete.
+Merge 6400/9743 complete.
+Merge 6500/9743 complete.
+Merge 6600/9743 complete.
+Merge 6700/9743 complete.
+Merge 6800/9743 complete.
+Merge 6900/9743 complete.
+Merge 7000/9743 complete.
+Merge 7100/9743 complete.
+Merge 7200/9743 complete.
+Merge 7300/9743 complete.
+Merge 7400/9743 complete.
+Merge 7500/9743 complete.
+Merge 7600/9743 complete.
+Merge 7700/9743 complete.
+Merge 7800/9743 complete.
+Merge 7900/9743 complete.
+Merge 8000/9743 complete.
+Merge 8100/9743 complete.
+Merge 8200/9743 complete.
+Merge 8300/9743 complete.
+Merge 8400/9743 complete.
+Merge 8500/9743 complete.
+Merge 8600/9743 complete.
+Merge 8700/9743 complete.
+Merge 8800/9743 complete.
+Merge 8900/9743 complete.
+Merge 9000/9743 complete.
+Merge 9100/9743 complete.
+Merge 9200/9743 complete.
+Merge 9300/9743 complete.
+Merge 9400/9743 complete.
+Merge 9500/9743 complete.
+Merge 9600/9743 complete.
+Merge 9700/9743 complete.
+BPE training finished.
+Training completed in 49.65 seconds.
+Vocabulary saved to: results/TinyStoriesHPC/tinystories_bpe.vocab.json
+Merges saved to: results/TinyStoriesHPC/tinystories_bpe.merges.bpe
+========================================
+Job completed at: Thu Oct 16 18:12:44 EDT 2025
+Output files saved to: results/TinyStoriesHPC
+JobID           JobName  Partition      State    Elapsed     MaxRSS  MaxVMSize 
+------------ ---------- ---------- ---------- ---------- ---------- ---------- 
+829137       bpe_tinys+        day    RUNNING   00:00:50                       
+829137.batch      batch               RUNNING   00:00:50                       
+829137.exte+     extern               RUNNING   00:00:50                       
