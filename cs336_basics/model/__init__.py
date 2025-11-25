@@ -29,3 +29,7 @@ v
 v
 (batch_size, sequence_length, vocab_size) of next-token probabilities
 """
+
+from .linear import Linear
+
+__all__ = ["Linear"]
