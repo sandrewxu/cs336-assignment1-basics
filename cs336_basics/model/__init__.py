@@ -32,5 +32,6 @@ v
 
 from .linear import Linear
 from .embedding import Embedding
+from .normalization import RMSNorm
 
-__all__ = ["Linear", "Embedding"]
+__all__ = ["Linear", "Embedding", "RMSNorm"]
