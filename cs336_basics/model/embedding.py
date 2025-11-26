@@ -32,7 +32,7 @@ class Embedding(nn.Module):
 
     def forward(
         self,
-        token_ids: Int[torch.Tensor, "..."]
+        token_ids: Int[torch.LongTensor, "..."]
     ) -> Float[torch.Tensor, "... d_model"]:
         """
         Look up embeddings for token ids.
