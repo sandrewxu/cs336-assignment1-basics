@@ -34,5 +34,6 @@ from .linear import Linear
 from .embedding import Embedding
 from .normalization import RMSNorm
 from .feedforward import SwiGLU, silu
+from .rope import RotaryPositionalEmbedding
 
-__all__ = ["Linear", "Embedding", "RMSNorm", "SwiGLU", "silu"]
+__all__ = ["Linear", "Embedding", "RMSNorm", "SwiGLU", "silu", "RotaryPositionalEmbedding"]
