@@ -25,11 +25,11 @@ class RotaryPositionalEmbedding(nn.Module):
     ) -> None:
         super().__init__()
         assert d_k % 2 == 0
-        # compute inv freqs: 1 / (theta^(2i/d_k))
-        inv_freq = 1.0 / (theta ** (torch.arange(0, d_k, 2, device=device) / d_k))
-        # go across all possible positions (1 to seq_len)
+        # compute inv freqs: 1 / (theta^(2i/d_k)) -- (d_k/2, )
+        inv_freqs = 1.0 / torch.pow(theta, torch.arange(0, d_k, 2, device=device) / d_k)
+        # go across all possible positions (1 to seq_len) -- (max_seq_len,)
         positions = torch.arange(max_seq_len, device=device)
-        angles = einsum(positions, inv_freq, "max_seq_len, d -> max_seq_len d")
+        angles = einsum(positions, inv_freqs, "max_seq_len, d -> max_seq_len d")
         self.register_buffer("cos", torch.cos(angles), persistent=False)
         self.register_buffer("sin", torch.sin(angles), persistent=False)
 
