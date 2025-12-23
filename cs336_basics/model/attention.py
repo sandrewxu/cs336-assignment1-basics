@@ -55,7 +55,7 @@ def scaled_dot_product_attention(
     softmax_inner = softmax(inner, dim=-1)  # normalize queries along keys
     return einsum(softmax_inner, V, "... queries keys, ... keys d_v -> ... queries d_v")
 
-class multihead_self_attention(nn.Module):
+class MultiHeadSelfAttention(nn.Module):
     """
     multi_head_self_attention
     """

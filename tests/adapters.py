@@ -149,8 +149,8 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    from cs336_basics.model.attention import multihead_self_attention
-    mhsa = multihead_self_attention(d_model=d_model, num_heads=num_heads)
+    from cs336_basics.model.attention import MultiHeadSelfAttention
+    mhsa = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
     fused_proj_weight = torch.cat([q_proj_weight, k_proj_weight, v_proj_weight], dim=0)
     mhsa.load_state_dict({
         "wqkv_weight": fused_proj_weight,
@@ -195,8 +195,8 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    from cs336_basics.model.attention import multihead_self_attention
-    mhsa = multihead_self_attention(d_model=d_model, num_heads=num_heads, rope_theta=theta, rope_max_seq_len=max_seq_len)
+    from cs336_basics.model.attention import MultiHeadSelfAttention
+    mhsa = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads, rope_theta=theta, rope_max_seq_len=max_seq_len)
     fused_proj_weight = torch.cat([q_proj_weight, k_proj_weight, v_proj_weight], dim=0)
     mhsa.load_state_dict({
         "wqkv_weight": fused_proj_weight,
@@ -298,7 +298,23 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    from cs336_basics.model.transformer import TransformerBlock
+    transformer = TransformerBlock(d_model, num_heads, d_ff, theta, max_seq_len)
+    # Map reference names to TransformerBlock attributes
+    sd = transformer.state_dict()
+    sd['attn_norm.weight'] = weights['ln1.weight']
+    sd['attn.wqkv_weight'] = torch.cat([
+        weights['attn.q_proj.weight'],
+        weights['attn.k_proj.weight'],
+        weights['attn.v_proj.weight']
+    ], dim=0)
+    sd['attn.wo_weight'] = weights['attn.output_proj.weight']
+    sd['ff_norm.weight'] = weights['ln2.weight']
+    sd['ff.w1.weight'] = weights['ffn.w1.weight']
+    sd['ff.w2.weight'] = weights['ffn.w2.weight']
+    sd['ff.w3.weight'] = weights['ffn.w3.weight']
+    transformer.load_state_dict(sd)
+    return transformer(in_features)
 
 
 def run_transformer_lm(
@@ -380,8 +396,41 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    from cs336_basics.model.transformer import TransformerLM
+    model = TransformerLM(vocab_size, context_length, d_model, num_layers, num_heads, d_ff, rope_theta)
+    # Build a compatible state_dict from provided flat weights and load it to the model
+    state_dict = {}
+    # Embedding weights
+    state_dict["embedding.weight"] = weights["token_embeddings.weight"]
 
+    for i in range(num_layers):
+        prefix = f"layers.{i}"
+        # Attention projections: wqkv_weight is [3*num_heads*d_k, d_model]
+        state_dict[f"transformer_blocks.{i}.attn.wqkv_weight"] = torch.cat([
+            weights[f"{prefix}.attn.q_proj.weight"],
+            weights[f"{prefix}.attn.k_proj.weight"],
+            weights[f"{prefix}.attn.v_proj.weight"],
+        ], dim=0)
+
+        # Output projection
+        state_dict[f"transformer_blocks.{i}.attn.wo_weight"] = weights[f"{prefix}.attn.output_proj.weight"]
+
+        # Norms
+        state_dict[f"transformer_blocks.{i}.attn_norm.weight"] = weights[f"{prefix}.ln1.weight"]
+        state_dict[f"transformer_blocks.{i}.ff_norm.weight"] = weights[f"{prefix}.ln2.weight"]
+
+        # FFN weights (SwiGLU expects w1, w2, w3)
+        state_dict[f"transformer_blocks.{i}.ff.w1.weight"] = weights[f"{prefix}.ffn.w1.weight"]
+        state_dict[f"transformer_blocks.{i}.ff.w2.weight"] = weights[f"{prefix}.ffn.w2.weight"]
+        state_dict[f"transformer_blocks.{i}.ff.w3.weight"] = weights[f"{prefix}.ffn.w3.weight"]
+
+    # Final norm and output
+    state_dict["final_norm.weight"] = weights["ln_final.weight"]
+    state_dict["lin_output.weight"] = weights["lm_head.weight"]
+
+    # Load the full state_dict
+    model.load_state_dict(state_dict)
+    return model(in_indices)
 
 def run_rmsnorm(
     d_model: int,
